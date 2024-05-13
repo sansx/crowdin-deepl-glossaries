@@ -3,7 +3,10 @@ import { join } from "path";
 import * as fs from "fs";
 import axios from "axios";
 
-import crowdin, { GlossariesModel } from "@crowdin/crowdin-api-client";
+import crowdin, {
+  GlossariesModel,
+  ResponseObject,
+} from "@crowdin/crowdin-api-client";
 
 import * as deepl from "deepl-node";
 
@@ -33,25 +36,26 @@ export async function uploadCrowdinGlossary(
   fileContent: any,
   scheme: GlossariesModel.GlossaryFileScheme
 ): Promise<void> {
-  const glossary = await glossariesApi.addGlossary({ languageId, name });
+  const glossaryList = (await glossariesApi.listGlossaries())?.data;
+
+  const glossary: any =
+    glossaryList?.find((item: any) => item.name === name) ||
+    (await glossariesApi.addGlossary({ languageId, name }))?.data;
   console.log("glossary", glossary);
 
   const storage = await uploadStorageApi.addStorage(fileName, fileContent);
 
   console.log("storage", storage);
 
-  const importGlossary = await glossariesApi.importGlossaryFile(
-    glossary.data.id,
-    {
-      storageId: storage.data.id,
-      scheme,
-    }
-  );
+  const importGlossary = await glossariesApi.importGlossaryFile(glossary?.id, {
+    storageId: storage.data.id,
+    scheme,
+  });
 
   let status = importGlossary.data.status;
   while (status !== "finished") {
     const progress = await glossariesApi.checkGlossaryImportStatus(
-      glossary.data.id,
+      glossary.id,
       importGlossary.data.identifier
     );
     status = progress.data.status;
@@ -66,7 +70,13 @@ export async function uploadDeeplGlossary(
 ) {
   const translator = new deepl.Translator(process.env.DEEPL_KEY as string);
 
-  console.log("process.env.DEEPL_KEY", process.env.DEEPL_KEY);
+  let glossaries = await translator.listGlossaries();
+  console.log("glossaries", glossaries);
+  await Promise.all(
+    glossaries
+      .filter((glossary) => glossary.name == glossaryName)
+      .map((glossary) => translator.deleteGlossary(glossary?.glossaryId))
+  );
 
   const targetEntries = new deepl.GlossaryEntries({
     entries,
@@ -77,7 +87,7 @@ export async function uploadDeeplGlossary(
     targetLang,
     targetEntries
   );
-  let glossaries = await translator.listGlossaries();
+  glossaries = await translator.listGlossaries();
   console.log("glossaries", glossaries);
   const glossary: any = glossaries.find(
     (glossary) => glossary.name == glossaryName
