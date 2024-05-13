@@ -39,7 +39,7 @@
           "ClassExpression": true,
           "FunctionDeclaration": true,
           "FunctionExpression": true,
-          "MethodDefinition": true
+          // "MethodDefinition": true
         },
         "publicOnly": true
       }
