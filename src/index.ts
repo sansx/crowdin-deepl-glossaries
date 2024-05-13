@@ -1,30 +1,44 @@
 import { clientOpts, glossaryIds, testingOpts } from "./configs/glossaryOpts";
-import { uploadGlossary } from "./uploadGlossary";
+import {
+  uploadCrowdinGlossary,
+  uploadDeeplGlossary,
+  getGlossaryEntires,
+} from "./uploadGlossary";
 import { logHandler } from "./utils/logHandler";
 import { validateEnv } from "./utils/validateEnv";
 
+import { join } from "path";
+
+import * as fs from "fs";
+
 (async () => {
   validateEnv();
-  const fileName = process.argv[2];
+  var readDir = fs
+    .readdirSync(process.cwd() + "/glossaries")
+    .filter((fileName) => fileName.includes(".csv"));
+  console.log(readDir);
+  const file = "ton.csv";
+  const fileName = join(process.cwd() + `/glossaries/${file}`);
+  const fileContent = fs.readFileSync(fileName, "utf-8");
 
-  switch (fileName) {
-    case "client":
-      logHandler.log("debug", `Starting process for ${fileName}.csv.`);
-      await uploadGlossary("client", clientOpts, glossaryIds.client);
-      break;
-    case "curriculum":
-      logHandler.log("debug", `Starting process for ${fileName}.csv.`);
-      await uploadGlossary("curriculum", testingOpts, glossaryIds.curriculum);
-      break;
-    case "docs":
-      logHandler.log("debug", `Starting process for ${fileName}.csv.`);
-      await uploadGlossary("docs", testingOpts, glossaryIds.docs);
-      break;
-    case "testing":
-      logHandler.log("debug", `Starting process for ${fileName}.csv.`);
-      await uploadGlossary("testing", testingOpts, glossaryIds.testing);
-      break;
-    default:
-      logHandler.log("error", `${fileName}.csv is not a valid glossary.`);
-  }
+  const readRes = await getGlossaryEntires(fileName);
+  console.log("readRes", readRes);
+
+  console.log(
+    "asd",
+    process.env.DEEPL_KEY,
+    process.env.CROWDIN_API,
+    process.env
+  );
+
+  // uploadDeeplGlossary("My test glossary", "en", "zh", readRes);
+
+  // console.log("fileContent", fileContent);
+
+  // const schema = {
+  //   term_en: 0,
+  //   description_en: 1,
+  // };
+
+  // uploadCrowdinGlossary("en", "testing", file, fileContent, schema);
 })();

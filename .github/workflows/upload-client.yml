@@ -30,3 +30,4 @@ jobs:
         run: npm run start:client
         env:
           CROWDIN_API: ${{ secrets.CROWDIN_GLOSSARY_KEY }}
+          DEEPL_KEY: ${{ secrets.DEEPL_KEY }}

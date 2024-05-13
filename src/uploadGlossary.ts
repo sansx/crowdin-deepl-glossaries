@@ -1,138 +1,110 @@
-import { readFile } from "fs/promises";
 import { join } from "path";
 
-import fetch from "node-fetch";
+import * as fs from "fs";
+import axios from "axios";
 
-import {
-  AddStorageResponse,
-  ImportGlossaryResponse,
-} from "./interfaces/CrowdinResponses";
-import { GlossaryConfig } from "./interfaces/GlossaryConfig";
-import { logHandler } from "./utils/logHandler";
-import { sleep } from "./utils/sleep";
+import crowdin, { GlossariesModel } from "@crowdin/crowdin-api-client";
 
-/**
- * This module posts a glossary CSV to the Crowdin storage API, imports that stored
- * data into the given glossary, then deletes the stored data after import.
- *
- * @param {string} name The name of the glossary to import, e.g. "testing".
- * @param {GlossaryConfig} config The Crowdin-expected config data.
- * @param {number} glossaryId The Crowdin ID of the glossary to update.
- */
-export const uploadGlossary = async (
+import * as deepl from "deepl-node";
+
+const csv = require("csv-parser");
+
+axios.interceptors.response.use(
+  (res) => {
+    return Promise.resolve(res.data);
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+const { uploadStorageApi, glossariesApi } = new crowdin(
+  {
+    token: process.env.CROWDIN_API as string,
+    // organization: "org",
+  },
+  { httpClient: axios }
+);
+
+export async function uploadCrowdinGlossary(
+  languageId: string,
   name: string,
-  config: GlossaryConfig,
-  glossaryId: number
-): Promise<void> => {
-  const auth = `Bearer ${process.env.CROWDIN_API}`;
+  fileName: string,
+  fileContent: any,
+  scheme: GlossariesModel.GlossaryFileScheme
+): Promise<void> {
+  const glossary = await glossariesApi.addGlossary({ languageId, name });
+  console.log("glossary", glossary);
 
-  logHandler.log("debug", `Reading /glossaries/${name}.csv.`);
+  const storage = await uploadStorageApi.addStorage(fileName, fileContent);
 
-  const glossaryContents = await readFile(
-    join(process.cwd() + `/glossaries/${name}.csv`),
-    "utf-8"
-  );
+  console.log("storage", storage);
 
-  logHandler.log(
-    "debug",
-    `Found glossary with ${glossaryContents.split("\n").length - 1} entries.`
-  );
-
-  logHandler.log("debug", "Uploading to Crowdin storage.");
-
-  const storageUpload = await fetch(
-    "https://freecodecamp.crowdin.com/api/v2/storages",
+  const importGlossary = await glossariesApi.importGlossaryFile(
+    glossary.data.id,
     {
-      method: "POST",
-      headers: {
-        "Crowdin-API-FileName": `${name}.csv`,
-        Authorization: auth,
-        "Content-Type": "application/octet-stream",
-      },
-      body: glossaryContents,
+      storageId: storage.data.id,
+      scheme,
     }
-  ).catch((err) => {
-    logHandler.log("error", `Upload failed with ${err.message}`);
-    process.exit(1);
-  });
-
-  const storageUploadResponse =
-    (await storageUpload.json()) as AddStorageResponse;
-
-  logHandler.log(
-    "debug",
-    `Uploaded file! Storage ID is ${storageUploadResponse.data.id}`
   );
 
-  config.storageId = storageUploadResponse.data.id;
-
-  const glossaryImport = await fetch(
-    `https://freecodecamp.crowdin.com/api/v2/glossaries/${glossaryId}/imports`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: auth,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(config),
-    }
-  ).catch((err) => {
-    logHandler.log("error", `Import failed with ${err.message}`);
-    process.exit(1);
-  });
-
-  const glossaryImportResponse =
-    (await glossaryImport.json()) as ImportGlossaryResponse;
-
-  let state = glossaryImportResponse.data.status;
-  const importId = glossaryImportResponse.data.identifier;
-
-  logHandler.log("debug", `Import ${importId} started!`);
-
-  while (state === "created") {
-    const importStatus = await fetch(
-      `https://freecodecamp.crowdin.com/api/v2/glossaries/${glossaryId}/imports/${importId}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: auth,
-        },
-      }
+  let status = importGlossary.data.status;
+  while (status !== "finished") {
+    const progress = await glossariesApi.checkGlossaryImportStatus(
+      glossary.data.id,
+      importGlossary.data.identifier
     );
-    const importStatusData =
-      (await importStatus.json()) as ImportGlossaryResponse;
-    state = importStatusData.data.status;
-    logHandler.log(
-      "debug",
-      `Import ${importId} is ${state} with an ETA of ${importStatusData.data.eta}`
-    );
-    await sleep(5000);
+    status = progress.data.status;
   }
+}
 
-  logHandler.log("debug", `Import ${importId} finished!`);
+export async function uploadDeeplGlossary(
+  glossaryName: string,
+  sourceLang: deepl.LanguageCode,
+  targetLang: deepl.LanguageCode,
+  entries: any
+) {
+  const translator = new deepl.Translator(process.env.DEEPL_KEY as string);
 
-  const storageDelete = await fetch(
-    `https://freecodecamp.crowdin.com/api/v2/storages/${config.storageId}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: auth,
-      },
-    }
-  ).catch((err) => {
-    logHandler.log(
-      "error",
-      `Failed to delete storage ${config.storageId} because ${err.message}`
-    );
-    process.exit(1);
+  console.log("process.env.DEEPL_KEY", process.env.DEEPL_KEY);
+
+  const targetEntries = new deepl.GlossaryEntries({
+    entries,
   });
+  const glossaryEnToDe = await translator.createGlossary(
+    glossaryName,
+    sourceLang,
+    targetLang,
+    targetEntries
+  );
+  let glossaries = await translator.listGlossaries();
+  console.log("glossaries", glossaries);
+  const glossary: any = glossaries.find(
+    (glossary) => glossary.name == glossaryName
+  );
+  console.log(
+    `Glossary ID: ${glossary?.glossaryId}, source: ${glossary?.sourceLang}, ` +
+      `target: ${glossary?.targetLang}, contains ${glossary?.entryCount} entries.`
+  );
+}
 
-  if (storageDelete.status === 204) {
-    logHandler.log("debug", `Deleted storage ${config.storageId}`);
-  } else {
-    logHandler.log(
-      "error",
-      `Failed to delete ${config.storageId} with a status of ${storageDelete.status}`
-    );
-  }
+export const getGlossaryEntires = (filePath: string) => {
+  const results: any = [];
+  return new Promise((res) => {
+    fs.createReadStream(filePath)
+      .pipe(
+        csv({
+          mapHeaders: ({ header, index }: any) =>
+            header.includes("Term:English") ? "Term:English" : header,
+        })
+      )
+      .on("data", (data: any) => results.push(data))
+      .on("end", () => {
+        const entriesObj: any = {};
+        results.forEach((res: any) => {
+          entriesObj[res["Term:English"]] = res["Term:English"];
+        });
+        res(entriesObj);
+      });
+  });
 };
