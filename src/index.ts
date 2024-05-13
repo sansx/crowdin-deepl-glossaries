@@ -48,20 +48,4 @@ import * as fs from "fs";
       schema
     );
   });
-
-  // const file = "ton.csv";
-  // const fileName = join(process.cwd() + `/glossaries/${file}`);
-  // const fileContent = fs.readFileSync(fileName, "utf-8");
-
-  // const readRes = await getGlossaryEntires(fileName);
-  // console.log("readRes", readRes);
-
-  // console.log("fileContent", fileContent);
-
-  // const schema = {
-  //   term_en: 0,
-  //   description_en: 1,
-  // };
-
-  // uploadCrowdinGlossary("en", "testing", file, fileContent, schema);
 })();
