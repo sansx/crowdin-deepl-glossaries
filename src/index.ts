@@ -13,25 +13,48 @@ import * as fs from "fs";
 
 (async () => {
   validateEnv();
-  var readDir = fs
+  var readDirFiles = fs
     .readdirSync(process.cwd() + "/glossaries")
-    .filter((fileName) => fileName.includes(".csv"));
-  console.log(readDir);
-  const file = "ton.csv";
-  const fileName = join(process.cwd() + `/glossaries/${file}`);
-  const fileContent = fs.readFileSync(fileName, "utf-8");
+    .filter(
+      (fileName) => fileName.includes(".csv") && !fileName.includes("test")
+    );
+  console.log(readDirFiles);
 
-  const readRes = await getGlossaryEntires(fileName);
-  console.log("readRes", readRes);
-
-  console.log(
-    "asd",
-    process.env.DEEPL_KEY,
-    process.env.CROWDIN_API,
-    process.env
+  const totalEntires = await Promise.all(
+    readDirFiles.map((fileName) =>
+      getGlossaryEntires(join(process.cwd() + `/glossaries/${fileName}`))
+    )
   );
 
-  // uploadDeeplGlossary("My test glossary", "en", "zh", readRes);
+  const totalEntiresObj = totalEntires.reduce(
+    (a: any, b: any) => ({ ...a, ...b }),
+    {}
+  );
+
+  uploadDeeplGlossary("My test glossary", "en", "zh", totalEntiresObj);
+
+  readDirFiles.forEach((fileName: string) => {
+    const targetFileName = join(process.cwd() + `/glossaries/${fileName}`);
+    const fileContent = fs.readFileSync(targetFileName, "utf-8");
+    const schema = {
+      term_en: 0,
+      description_en: 1,
+    };
+    uploadCrowdinGlossary(
+      "en",
+      `my ${fileName?.replace(".csv", "")} testing`,
+      fileName,
+      fileContent,
+      schema
+    );
+  });
+
+  // const file = "ton.csv";
+  // const fileName = join(process.cwd() + `/glossaries/${file}`);
+  // const fileContent = fs.readFileSync(fileName, "utf-8");
+
+  // const readRes = await getGlossaryEntires(fileName);
+  // console.log("readRes", readRes);
 
   // console.log("fileContent", fileContent);
 
