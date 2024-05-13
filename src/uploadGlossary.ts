@@ -102,7 +102,7 @@ export const getGlossaryEntires = (filePath: string) => {
       .on("end", () => {
         const entriesObj: any = {};
         results.forEach((res: any) => {
-          entriesObj[res["Term:English"]] = res["Term:English"];
+          entriesObj[res["Term:English"].trim()] = res["Term:English"].trim();
         });
         res(entriesObj);
       });
